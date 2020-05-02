@@ -1,8 +1,13 @@
 # ovpn-local-tests
 Local OpenVPN bw tests
 
+Tested only on Ubuntu 18/20 LTS
+
 Usage:
 ```
+# Required apps
+apt-get update && apt-get install -qq openvpn iperf3 
+
 # Setup
 git clone https://github.com/rjsocha/ovpn-local-tests.git
 cd ovpn-local-tests
