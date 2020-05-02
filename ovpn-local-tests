@@ -1,0 +1,169 @@
+#!/bin/bash
+# Sample bw tester for OpenVPN
+# Create two net spaces. Run OpenVPN and see results
+# This is realted to https://community.openvpn.net/openvpn/wiki/Gigabit_Networks_Linux
+
+
+# Usage:
+# ./ovpn-local-tests setup
+# For RAW test
+# ./ovpn-local-tests test-raw
+#
+# For OpenVPN
+# ./ovpn-local-tests test
+#
+# Tune OpenVPN
+# ./ovpn-local-tests test --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher aes-256-cbc --engine aesni
+# ./ovpn-local-tests test --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher none --auth none
+# Cleanup at the end
+# ./ovpn-local-tests clean
+# 
+WORKDIR="./"
+
+NS1="ns1"
+NS2="ns2"
+
+NS1IP="10.0.0.1"
+NS2IP="10.0.0.2"
+NSPREFIX=30
+
+VPN1IP="1.1.1.1"
+VPN2IP="2.2.2.2"
+
+function _abort() {
+	echo "$@"
+	exit 1
+}
+
+[[ $UID -eq 0 ]] || _abort "run me as root..."
+[[ -d $WORKDIR ]] || mkdir -p $WORKDIR
+[[ -d $WORKDIR ]] || _abort "unable to create work directory at $WORKDIR"
+
+
+function check_apps() {
+	command -v openvpn &>/dev/null || _abort "missing openvpn"
+	command -v iperf3 &>/dev/null || _abort "missing iperf3"
+}
+
+function ns_exists() {
+	ip netns exec $1 true &>/dev/null
+	return $?
+}	
+
+function setup_test_env() {
+	ns_exists $NS1 && _abort "namespace $NS1 already exists...aborting"
+	ns_exists $NS2 && _abort "namespace $NS2 already exists...aborting"
+	ip netns add $NS1 || _abort "unable to create namespace $NS1"
+	ip netns add $NS2 || _abort "unable to create namespace $NS2"
+	ip -n $NS1 link add eth0 type veth peer name eth0 netns $NS2
+	ip -n $NS1 link set up lo
+	ip -n $NS2 link set up lo
+	ip -n $NS1 addr add $NS1IP/$NSPREFIX dev eth0
+	ip -n $NS2 addr add $NS2IP/$NSPREFIX dev eth0
+	ip -n $NS1 link set up dev eth0
+	ip -n $NS2 link set up dev eth0
+	echo "Namespace $NS1 setup with IP: $NS1IP"
+	echo "Namespace $NS2 setup with IP: $NS2IP"
+}
+
+function cleanup_test_env() {
+	ns_exists $NS1 && ip netns delete $NS1
+	ns_exists $NS2 && ip netns delete $NS2
+}
+
+function test_ns() {
+	ns_exists $NS1 || _abort "Run setup firest"
+	ns_exists $NS2 || _abort "Run setup firest"
+	echo -n "$NS1IP (from $NS2 to $NS1): "
+	ip netns exec $NS2 ping -w 1 -c 1 $NS1IP &>/dev/null
+	if [[ $? -eq 0 ]]
+	then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	echo -n "$NS2IP (from $NS1 to $NS2): "
+	ip netns exec $NS1 ping -c 1 $NS2IP &>/dev/null
+	if [[ $? -eq 0 ]]
+	then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+}
+
+# test raw bw $1 - SRV, $2 - $CLIENT
+function test_bw() {
+local SRV=$1 CLIENT=$2
+	ns_exists $NS1 || _abort "Run setup firest"
+	ns_exists $NS2 || _abort "Run setup firest"
+	echo "Starting IPerf3 server"
+	ip netns exec $NS1 iperf3 -1 -B $SRV -D -s
+	sleep 1
+	echo "Starting IPers3 client"
+	ip netns exec $NS2 iperf3 -4 -B $CLIENT -c $SRV
+}
+
+function test_ovpn() {
+local c=1 ok=0
+	ns_exists $NS1 || _abort "Run setup firest"
+	ns_exists $NS2 || _abort "Run setup firest"
+	echo "Generating common secret key"
+	openvpn --genkey --secret "$WORKDIR/secret.key"
+	echo "Starting OpenVPN server on $NS1 namespace at $NS1IP"
+	ip netns exec $NS1 openvpn --daemon --writepid "$WORKDIR/$NS1.pid" --log "$WORKDIR/$NS1.log" --dev tun --proto udp --port 2222 --bind --local $NS1IP --secret "$WORKDIR/secret.key" --ifconfig $VPN1IP $VPN2IP $@
+	echo "Starting OpenVPN client on $NS2 namespace at $NS2IP"
+	ip netns exec $NS2 openvpn --daemon --writepid "$WORKDIR/$NS2.pid" --log "$WORKDIR/$NS2.log" --dev tun --proto udp --port 2222 --nobind --secret "$WORKDIR/secret.key" --remote $NS1IP --ifconfig $VPN2IP $VPN1IP $@
+	echo -n "Testing VPN connection: "
+	while [[ $c -lt 5 ]]
+	do
+		echo -n "."
+		ip netns exec $NS2 ping -w 1 -c 1 -I $VPN2IP ${VPN1IP} &>/dev/null
+		if [[ $? -eq 0 ]]
+		then
+			ok=1
+			break
+		fi
+		sleep 0.5
+		((c++))
+	done
+	if [[ $ok -eq 1 ]]
+	then
+		echo " OK"
+		test_bw $VPN1IP $VPN2IP
+	else
+		echo " FAIL"
+	fi
+	echo "Stopping OpenVPN..."
+	kill $(<"$WORKDIR/$NS1.pid")
+	kill $(<"$WORKDIR/$NS2.pid")
+	sleep 1
+	kill -9 $(<"$WORKDIR/$NS1.pid") &>/dev/null
+	kill -9 $(<"$WORKDIR/$NS2.pid") &>/dev/null
+
+}
+
+check_apps
+
+case "$1" in
+	setup)
+		setup_test_env
+		;;
+	test-ns)
+		test_ns
+		;;
+	test-raw) 
+		test_bw $NS1IP $NS2IP
+		;;
+
+	test)
+		shift
+		test_ovpn "$@"
+		;;
+	clean)
+		cleanup_test_env
+		;;	
+	*)
+		echo "$0 setup|test|cleanup"
+		exit 1
+esac
