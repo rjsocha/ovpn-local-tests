@@ -130,6 +130,7 @@ local c=1 ok=0
 	if [[ $ok -eq 1 ]]
 	then
 		echo " OK"
+		echo "OPTIONS: $@"
 		test_bw $VPN1IP $VPN2IP
 	else
 		echo " FAIL"
