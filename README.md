@@ -1,6 +1,10 @@
 # ovpn-local-tests
 Local OpenVPN bw tests
 
+This simple script allow to test diffrent encryption options for OpenVPN (--ciper, --auth and other) on local machine.
+This may (or may not) allow to determine  baseline for OpenVPN performance (both ends are on the same machine so...).
+
+
 Tested only on Ubuntu 18/20 LTS
 
 Usage:
