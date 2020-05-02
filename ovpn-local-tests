@@ -97,10 +97,10 @@ function test_bw() {
 local SRV=$1 CLIENT=$2
 	ns_exists $NS1 || _abort "Run setup firest"
 	ns_exists $NS2 || _abort "Run setup firest"
-	echo "Starting IPerf3 server"
+	#echo "Starting IPerf3 server"
 	ip netns exec $NS1 iperf3 -1 -B $SRV -D -s
 	sleep 1
-	echo "Starting IPers3 client"
+	#echo "Starting IPers3 client"
 	ip netns exec $NS2 iperf3 -4 -B $CLIENT -c $SRV
 }
 
