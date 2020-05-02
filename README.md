@@ -29,8 +29,11 @@ cd ovpn-local-tests
 ./ovpn-local-tests test
 
 # Tune OpenVPN
-./ovpn-local-tests test --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher aes-256-cbc --engine aesni
+./ovpn-local-tests test --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher aes-256-cbc
 ./ovpn-local-tests test --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher none --auth none
+
+# simple cpu affinity
+./ovpn-local-tests test smp --tun-mtu 9000 --fragment 0 --mssfix 0 --cipher aes-256-cbc
 
 # Cleanup when done
 ./ovpn-local-tests clean
