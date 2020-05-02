@@ -5,7 +5,12 @@ This simple script allow to test diffrent encryption options for OpenVPN (--cipe
 This may (or may not) allow to determine  baseline for OpenVPN performance (both ends are on the same machine so...).
 
 
-Tested only on Ubuntu 18/20 LTS
+Tested only on Ubuntu 18/20 LTS, Debian 10
+
+You can give extra options for openvpn (client&server). For ex:
+```
+./ovpn-local-tests test --cipher none
+```
 
 Usage:
 ```
